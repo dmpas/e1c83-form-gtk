@@ -112,7 +112,7 @@ entry_title(const xmlNode *p)
 }
 
 static const xmlChar *
-entry_title_ex(const xmlNode *p)
+entry_title_ex(const xmlNode *p, bool attach_c)
 {
     const xmlNode *e = find_by_path(p, "Properties/Title/item/content");
     const xmlChar *r = 0;
@@ -120,17 +120,31 @@ entry_title_ex(const xmlNode *p)
     if (e)
         r = children_content(e);
 
-    if (r)
+    if (r) {
+        if (attach_c) {
+            char *buf = malloc(strlen(CHAR(r)) + 3);
+            sprintf(buf, "%s: ", r);
+            r = XSTRING (g_strdup(buf));
+            free(buf);
+        }
         return r;
+    }
 
     e = find_by_path(p, "Properties/Name");
     if (e)
         r = children_content(e);
     if (r) {
-        char *buf = malloc(strlen(CHAR(r)) + 3);
-        sprintf(buf, "[%s]", r);
+
+        char *buf = malloc(strlen(CHAR(r)) + 5);
+
+        if (attach_c)
+            sprintf(buf, "[%s]: ", r);
+        else
+            sprintf(buf, "[%s]", r);
+
         r = XSTRING (g_strdup(buf));
         free(buf);
+
         return r;
     }
     return 0;
@@ -168,7 +182,7 @@ load_usual_group(const xmlNode *group, form_element_t *parent)
     p = find_by_path(group, "Properties/ShowTitle");
     if (xstrcmp(children_content(p), "false") == 0)
         show_title = false;
-    const xmlChar *title = entry_title_ex(group);
+    const xmlChar *title = entry_title_ex(group, false);
 
     int repr = REPRESENTATION_NONE;
 
@@ -273,8 +287,16 @@ justify_element(GtkWidget *el, const xmlNode *justify)
 static void
 load_text_entry(const xmlNode *text, form_element_t *parent, bool in_table)
 {
-    const xmlChar *label = entry_title_ex(text);
-    const xmlNode *p = find_by_path(text, "Properties/TitleLocation");
+    bool is_edit = true;
+    const xmlNode *p;
+
+    p = find_by_path(text, "Properties/Type");
+    if (p)
+        if (xstrcmp(children_content(p), "LabelField") == 0)
+            is_edit = false;
+
+    const xmlChar *label = entry_title_ex(text, is_edit);
+    p = find_by_path(text, "Properties/TitleLocation");
 
     int title_loc = TITLE_LOCATION_LEFT;
 
@@ -287,14 +309,6 @@ load_text_entry(const xmlNode *text, form_element_t *parent, bool in_table)
                 title_loc = TITLE_LOCATION_RIGHT;
         }
     }
-
-    bool is_edit = true;
-
-    p = find_by_path(text, "Properties/Type");
-    if (p)
-        if (xstrcmp(children_content(p), "LabelField") == 0)
-            is_edit = false;
-
 
     form_element_t E;
     E.box = false;
@@ -370,7 +384,7 @@ load_text_entry(const xmlNode *text, form_element_t *parent, bool in_table)
 static void
 load_label(const xmlNode *text, form_element_t *parent)
 {
-    const xmlChar *label = entry_title_ex(text);
+    const xmlChar *label = entry_title_ex(text, false);
     form_element_t L;
 
     L.widget = gtk_label_new(GTK_CHAR(label));
@@ -391,7 +405,7 @@ load_input(const xmlNode *text, form_element_t *parent)
 static void
 load_check_box(const xmlNode *box, form_element_t *parent)
 {
-    const xmlChar *label = entry_title_ex(box);
+    const xmlChar *label = entry_title_ex(box, false);
 
     form_element_t CB;
     CB.widget = gtk_check_button_new_with_label(GTK_CHAR(label));
@@ -403,7 +417,7 @@ load_check_box(const xmlNode *box, form_element_t *parent)
 static void
 load_page(const xmlNode *page, form_element_t *parent)
 {
-    const xmlChar *label = entry_title_ex(page);
+    const xmlChar *label = entry_title_ex(page, false);
     const xmlNode *p = find_by_path(page, "Properties/Grouping");
 
     int grouping = GROUPING_HORIZONTAL;
@@ -490,13 +504,13 @@ table_make_columns(const xmlNode *table, GtkTreeView *view)
 
     for (cur_node = p->children; cur_node; cur_node = cur_node->next) {
         if (is_oftype(cur_node, "Text")) {
-            const xmlChar *title = entry_title_ex(cur_node);
+            const xmlChar *title = entry_title_ex(cur_node, false);
             GtkCellRenderer *renderer = gtk_cell_renderer_text_new ();
             GtkTreeViewColumn *c = gtk_tree_view_column_new_with_attributes (GTK_CHAR(title), renderer, NULL);
             gtk_tree_view_append_column(view, c);
         }
         if (is_oftype(cur_node, "Input")) {
-            const xmlChar *title = entry_title_ex(cur_node);
+            const xmlChar *title = entry_title_ex(cur_node, false);
             GtkCellRenderer *renderer = gtk_cell_renderer_text_new ();
             GtkTreeViewColumn *c = gtk_tree_view_column_new_with_attributes (GTK_CHAR(title), renderer, NULL);
             gtk_tree_view_append_column(view, c);
