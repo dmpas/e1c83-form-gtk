@@ -19,6 +19,7 @@ typedef struct __form_element {
     int             id;
     gchar          *name;
     gchar          *title;
+    int             table_index;
     bool            box;
     GtkWidget      *widget;
 
@@ -141,7 +142,13 @@ entry_title_ex(const xmlNode *p)
 #define GROUPING_HORIZONTAL 1
 
 static void
+load_form_element(const xmlNode *cur_node, form_element_t *parent);
+
+static void
 load_form_elements(const xmlNode *list, form_element_t *parent);
+
+static void
+load_text_entry(const xmlNode *text, form_element_t *parent, bool in_table);
 
 #define REPRESENTATION_NONE   0
 #define REPRESENTATION_WEAK   1
@@ -179,8 +186,57 @@ load_usual_group(const xmlNode *group, form_element_t *parent)
     G.box = true;
 
     p = find_by_path(group, "ContainedItems");
-    if (p)
-        load_form_elements(p->children, &G);
+    if (p) {
+
+        int count_table;
+        const xmlNode *cur_node = p->children;
+
+        while (cur_node) {
+
+            count_table = 0;
+
+            if (grouping == GROUPING_VERTICAL) {
+                const xmlNode *n = cur_node;
+                while (n) {
+                    if (is_oftype(n, "Text") || is_oftype(n, "Input")) {
+                        ++count_table;
+                        n = n->next;
+
+                        while (n && n->type != XML_ELEMENT_NODE)
+                            n = n->next;
+
+                        if (!n)
+                            break;
+                    } else
+                        break;
+                }
+            }
+
+            if ((count_table > 1) && (grouping == GROUPING_VERTICAL)) {
+
+                form_element_t T;
+                T.widget = gtk_table_new(count_table, 2, false);
+                T.table_index = 0;
+
+                container_add(&G, T.widget);
+
+                while (count_table--) {
+                    if (is_oftype(cur_node, "Text") || is_oftype(cur_node, "Input")) {
+                        load_text_entry(cur_node, &T, true);
+                        ++T.table_index;
+                    }
+                    cur_node = cur_node->next;
+                    while (cur_node && cur_node->type != XML_ELEMENT_NODE)
+                        cur_node = cur_node->next;
+                }
+            }
+            else {
+                load_form_element(cur_node, &G);
+                cur_node = cur_node->next;
+            }
+        }
+
+    }
 
     if (repr == REPRESENTATION_STRONG) {
         GtkWidget *widget = gtk_frame_new("");
@@ -215,7 +271,7 @@ justify_element(GtkWidget *el, const xmlNode *justify)
 }
 
 static void
-load_text_entry(const xmlNode *text, form_element_t *parent)
+load_text_entry(const xmlNode *text, form_element_t *parent, bool in_table)
 {
     const xmlChar *label = entry_title_ex(text);
     const xmlNode *p = find_by_path(text, "Properties/TitleLocation");
@@ -235,8 +291,9 @@ load_text_entry(const xmlNode *text, form_element_t *parent)
     bool is_edit = true;
 
     p = find_by_path(text, "Properties/Type");
-    if (xstrcmp(children_content(p), "LabelField") == 0)
-        is_edit = false;
+    if (p)
+        if (xstrcmp(children_content(p), "LabelField") == 0)
+            is_edit = false;
 
 
     form_element_t E;
@@ -261,14 +318,30 @@ load_text_entry(const xmlNode *text, form_element_t *parent)
                 justify_element(w_edit, p);
         }
 
+        if (in_table) {
+            gtk_table_attach(GTK_TABLE(parent->widget),
+                    w_label,
+                    0, 1, parent->table_index + 1, parent->table_index + 2,
+                    GTK_FILL, 0,
+                    0, 0
+            );
+            gtk_table_attach(GTK_TABLE(parent->widget),
+                    w_edit,
+                    1, 2, parent->table_index + 1, parent->table_index + 2,
+                    GTK_EXPAND | GTK_FILL, 0,
+                    0, 0
+            );
+        } else {
+            if (title_loc == TITLE_LOCATION_LEFT)
+                gtk_box_pack_start(GTK_BOX(E.widget), w_label, false, false, 0);
 
-        if (title_loc == TITLE_LOCATION_LEFT)
-            gtk_box_pack_start(GTK_BOX(E.widget), w_label, false, false, 0);
+            gtk_box_pack_start(GTK_BOX(E.widget), w_edit, true, true, 0);
 
-        gtk_box_pack_start(GTK_BOX(E.widget), w_edit, true, true, 0);
+            if (title_loc == TITLE_LOCATION_RIGHT)
+                gtk_box_pack_start(GTK_BOX(E.widget), w_label, false, false, 0);
 
-        if (title_loc == TITLE_LOCATION_RIGHT)
-            gtk_box_pack_start(GTK_BOX(E.widget), w_label, false, false, 0);
+            container_add(parent, E.widget);
+        }
 
     } else {
         if (is_edit)
@@ -280,9 +353,18 @@ load_text_entry(const xmlNode *text, form_element_t *parent)
             if (p)
                 justify_element(E.widget, p);
         }
-    }
 
-    container_add(parent, E.widget);
+        if (in_table) {
+            gtk_table_attach(GTK_TABLE(parent->widget),
+                    E.widget,
+                    1, 2, parent->table_index + 1, parent->table_index + 2,
+                    GTK_EXPAND | GTK_FILL, 0,
+                    0, 0
+            );
+        } else {
+            container_add(parent, E.widget);
+        }
+    }
 }
 
 static void
@@ -303,7 +385,7 @@ load_label(const xmlNode *text, form_element_t *parent)
 static void
 load_input(const xmlNode *text, form_element_t *parent)
 {
-    load_text_entry(text, parent);
+    load_text_entry(text, parent, false);
 }
 
 static void
@@ -458,45 +540,43 @@ load_table(const xmlNode *table, form_element_t *parent)
 }
 
 static void
+load_form_element(const xmlNode *cur_node, form_element_t *parent)
+{
+    if (is_oftype(cur_node, "Group")) {
+        const xmlNode *p = find_by_path(cur_node, "Properties/Type")->children;
+
+        if (xstrcmp(p->content, "UsualGroup") == 0)
+            load_usual_group(cur_node, parent);
+    }
+
+    if (is_oftype(cur_node, "Text")) {
+        load_text_entry(cur_node, parent, false);
+    }
+
+    if (is_oftype(cur_node, "Input")) {
+        load_input(cur_node, parent);
+    }
+
+    if (is_oftype(cur_node, "CheckBox")) {
+        load_check_box(cur_node, parent);
+    }
+
+    if (is_oftype(cur_node, "Pages")) {
+        load_pages(cur_node, parent);
+    }
+
+    if (is_oftype(cur_node, "Table")) {
+        load_table(cur_node, parent);
+    }
+
+}
+
+static void
 load_form_elements(const xmlNode *list, form_element_t *parent)
 {
     const xmlNode *cur_node = NULL;
-    for (cur_node = list; cur_node; cur_node = cur_node->next) {
-
-        if (is_oftype(cur_node, "Group")) {
-            const xmlNode *p = find_by_path(cur_node, "Properties/Type")->children;
-
-            if (xstrcmp(p->content, "UsualGroup") == 0)
-                load_usual_group(cur_node, parent);
-        }
-
-        if (is_oftype(cur_node, "Text")) {
-
-/*
-            const xmlNode *p = find_by_path(cur_node, "Properties/Type");
-            if (xstrcmp(children_content(p), "LabelField") == 0)
-                load_label(cur_node, parent);
-            else
-                */
-                load_text_entry(cur_node, parent);
-        }
-
-        if (is_oftype(cur_node, "Input")) {
-            load_input(cur_node, parent);
-        }
-
-        if (is_oftype(cur_node, "CheckBox")) {
-            load_check_box(cur_node, parent);
-        }
-
-        if (is_oftype(cur_node, "Pages")) {
-            load_pages(cur_node, parent);
-        }
-
-        if (is_oftype(cur_node, "Table")) {
-            load_table(cur_node, parent);
-        }
-    }
+    for (cur_node = list; cur_node; cur_node = cur_node->next)
+        load_form_element(cur_node, parent);
 }
 
 
