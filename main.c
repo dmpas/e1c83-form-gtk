@@ -10,6 +10,8 @@
 #define FORM_HGROUP 2
 
 #define GTK_CHAR(string) (const gchar *)(string)
+#define XSTRING(string) (const xmlChar *) (string)
+#define CHAR(string) (const char *)(string)
 
 typedef struct __form_element {
 
@@ -124,9 +126,9 @@ entry_title_ex(const xmlNode *p)
     if (e)
         r = children_content(e);
     if (r) {
-        char *buf = malloc(strlen(r) + 3);
+        char *buf = malloc(strlen(CHAR(r)) + 3);
         sprintf(buf, "[%s]", r);
-        r = g_strdup(buf);
+        r = XSTRING (g_strdup(buf));
         free(buf);
         return r;
     }
@@ -197,18 +199,18 @@ load_usual_group(const xmlNode *group, form_element_t *parent)
 #define TITLE_LOCATION_RIGHT 2
 
 static void
-justify_label(GtkWidget *label, const xmlNode *justify)
+justify_element(GtkWidget *el, const xmlNode *justify)
 {
     const xmlChar *s = children_content(justify);
     gfloat xalign, yalign;
-    gtk_misc_get_alignment(GTK_MISC(label), &xalign, &yalign);
+    gtk_misc_get_alignment(GTK_MISC(el), &xalign, &yalign);
 
     if (xstrcmp(s, "Right") == 0)
-        gtk_misc_set_alignment(GTK_MISC(label), 1, yalign);
+        gtk_misc_set_alignment(GTK_MISC(el), 1, yalign);
     if (xstrcmp(s, "Left") == 0)
-        gtk_misc_set_alignment(GTK_MISC(label), 0, yalign);
+        gtk_misc_set_alignment(GTK_MISC(el), 0, yalign);
     if (xstrcmp(s, "Auto") == 0)
-        gtk_misc_set_alignment(GTK_MISC(label), 0, yalign);
+        gtk_misc_set_alignment(GTK_MISC(el), 0, yalign);
 
 }
 
@@ -250,9 +252,15 @@ load_text_entry(const xmlNode *text, form_element_t *parent)
         ;
 
         p = find_by_path(text, "Properties/HeaderHorizontalAlign");
-        if (!p)
+        if (p)
+            justify_element(w_label, p);
+
+        if (!is_edit) {
             p = find_by_path(text, "Properties/HorizontalAlign");
-        justify_label(w_label, p);
+            if (p)
+                justify_element(w_edit, p);
+        }
+
 
         if (title_loc == TITLE_LOCATION_LEFT)
             gtk_box_pack_start(GTK_BOX(E.widget), w_label, false, false, 0);
@@ -265,8 +273,13 @@ load_text_entry(const xmlNode *text, form_element_t *parent)
     } else {
         if (is_edit)
             E.widget = gtk_entry_new();
-        else
+        else {
             E.widget = gtk_label_new(GTK_CHAR(label));
+
+            p = find_by_path(text, "Properties/HorizontalAlign");
+            if (p)
+                justify_element(E.widget, p);
+        }
     }
 
     container_add(parent, E.widget);
@@ -281,7 +294,7 @@ load_label(const xmlNode *text, form_element_t *parent)
     L.widget = gtk_label_new(GTK_CHAR(label));
     L.box = false;
 
-    justify_label(L.widget, find_by_path(text, "Properties/HeaderHorizontalAlign"));
+    justify_element(L.widget, find_by_path(text, "Properties/HeaderHorizontalAlign"));
 
     container_add(parent, L.widget);
 }
