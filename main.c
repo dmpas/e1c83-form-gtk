@@ -29,6 +29,8 @@ typedef struct __form_element {
 
 } form_element_t;
 
+static GtkWidget *global_menu_bar;
+
 static inline int
 xstrcmp(const xmlChar *xs, const char *b)
 {
@@ -575,6 +577,89 @@ load_table(const xmlNode *table, form_element_t *parent)
 }
 
 static void
+load_command_bar_sub_menu_buttons(const xmlNode *menu, form_element_t *parent)
+{
+    const xmlNode *c = find_by_path(menu, "ContainedItems");
+
+    for (c = c->children; c ; c = c->next) {
+
+        if (is_oftype(c, "Button")) {
+
+            const xmlChar *c_title = entry_title_ex(c, false);
+            GtkWidget *mel = gtk_menu_item_new_with_label(GTK_CHAR(c_title));
+
+            gtk_menu_shell_append(GTK_MENU_SHELL(parent->widget), mel);
+        }
+
+        if (is_oftype(c, "Buttons")) {
+
+            form_element_t sm;
+            sm.widget = gtk_menu_new();
+
+            const xmlChar *c_title = entry_title_ex(c, false);
+            GtkWidget *mel = gtk_menu_item_new_with_label(GTK_CHAR(c_title));
+
+            load_command_bar_sub_menu_buttons(c, &sm);
+
+            gtk_menu_item_set_submenu(GTK_MENU_ITEM(mel), sm.widget);
+
+            gtk_menu_shell_append(GTK_MENU_SHELL(parent->widget), mel);
+        }
+
+    }
+}
+
+static void
+load_command_bar_sub_menu(const xmlNode *menu, form_element_t *parent)
+{
+    const xmlChar *title = entry_title_ex(menu, false);
+    GtkToolItem *submenu = gtk_menu_tool_button_new(NULL, GTK_CHAR(title));
+
+    form_element_t m;
+    m.widget = gtk_menu_new();
+
+    const xmlNode *c = find_by_path(menu, "ContainedItems");
+    for (c = c->children; c ; c = c->next) {
+
+        if (is_oftype(c, "Button")) {
+            const xmlChar *c_title = entry_title_ex(c, false);
+            GtkWidget *mel = gtk_menu_item_new_with_label(GTK_CHAR(c_title));
+
+            gtk_menu_shell_append(GTK_MENU_SHELL(m.widget), mel);
+        }
+
+        if (is_oftype(c, "Buttons")) {
+
+            form_element_t sm;
+            sm.widget = gtk_menu_new();
+
+            const xmlChar *c_title = entry_title_ex(c, false);
+            GtkWidget *mel = gtk_menu_item_new_with_label(GTK_CHAR(c_title));
+
+            load_command_bar_sub_menu_buttons(c, &sm);
+
+            gtk_menu_item_set_submenu(GTK_MENU_ITEM(mel), sm.widget);
+
+            gtk_menu_shell_append(GTK_MENU_SHELL(m.widget), mel);
+        }
+
+    }
+
+    gtk_menu_tool_button_set_menu(GTK_MENU_TOOL_BUTTON(submenu), m.widget);
+
+    {
+        /*! TODO: Выяснить, почему подменю не появляется,
+            если его не добавить в видимое меню на форме
+         */
+        GtkWidget *mel = gtk_menu_item_new();
+        gtk_menu_item_set_submenu(GTK_MENU_ITEM(mel), m.widget);
+        gtk_menu_shell_append(GTK_MENU_SHELL(global_menu_bar), mel);
+    }
+
+    gtk_toolbar_insert(GTK_TOOLBAR(parent->widget), submenu, -1);
+}
+
+static void
 load_command_bar(const xmlNode *bar, form_element_t *parent)
 {
     const xmlNode *n = find_by_path(bar, "ContainedItems");
@@ -589,6 +674,10 @@ load_command_bar(const xmlNode *bar, form_element_t *parent)
             GtkToolItem *btn = gtk_tool_button_new(NULL, GTK_CHAR(title));
 
             gtk_toolbar_insert(GTK_TOOLBAR(cbar.widget), btn, -1);
+        }
+
+        if (is_oftype(n, "SubMenu")) {
+            load_command_bar_sub_menu(n, &cbar);
         }
     }
 
@@ -711,6 +800,8 @@ int main (int argc, char *argv[])
     gtk_init (&argc, &argv);
     g_log_set_handler ("Gtk", G_LOG_LEVEL_WARNING, g_log_default_handler, NULL);
 
+    global_menu_bar = gtk_menu_bar_new();
+
     form_element_t *form = read_83_form("./Form.xml");
     if (!form) {
         fprintf(stderr, "failed to open Form.xml!\n");
@@ -724,7 +815,12 @@ int main (int argc, char *argv[])
     gtk_widget_realize (win);
     g_signal_connect (win, "destroy", gtk_main_quit, NULL);
 
-    gtk_container_add (GTK_CONTAINER (win), form->widget);
+    GtkWidget *w = gtk_vbox_new(false, 0);
+
+    gtk_box_pack_start(GTK_BOX(w), global_menu_bar, false, false, 0);
+    gtk_box_pack_start(GTK_BOX(w), form->widget, true, true, 0);
+
+    gtk_container_add (GTK_CONTAINER (win), w);
 
     gtk_widget_show_all (win);
     gtk_main ();
