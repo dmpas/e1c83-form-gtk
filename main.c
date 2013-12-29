@@ -548,10 +548,53 @@ load_table(const xmlNode *table, form_element_t *parent)
     T.widget = gtk_tree_view_new_with_model(model);
 
     table_make_columns(table, GTK_TREE_VIEW(T.widget));
-
     gtk_container_add(GTK_CONTAINER(scroll), T.widget);
+
+    {
+        const xmlNode *pre = find_by_path(table, "PredefinedContainedItems");
+
+        if (pre->children) {
+
+            form_element_t vbox, pre_box;
+            vbox.widget = gtk_vbox_new(false, 0);
+            vbox.box = true;
+
+            pre_box.widget = gtk_vbox_new(false, 0);
+            pre_box.box = true;
+
+            load_form_elements(pre->children, &pre_box);
+
+            gtk_box_pack_start(GTK_BOX(vbox.widget), pre_box.widget, false, false, 0);
+            gtk_box_pack_start(GTK_BOX(vbox.widget), scroll, true, true, 0);
+
+            scroll = vbox.widget;
+        }
+    }
+
     container_add(parent, scroll);
 }
+
+static void
+load_command_bar(const xmlNode *bar, form_element_t *parent)
+{
+    const xmlNode *n = find_by_path(bar, "ContainedItems");
+
+    form_element_t cbar;
+    cbar.widget = gtk_toolbar_new();
+
+    for (n = n->children; n ; n = n->next) {
+        if (is_oftype(n, "Button")) {
+
+            const xmlChar *title = entry_title_ex(n, false);
+            GtkToolItem *btn = gtk_tool_button_new(NULL, GTK_CHAR(title));
+
+            gtk_toolbar_insert(GTK_TOOLBAR(cbar.widget), btn, -1);
+        }
+    }
+
+    container_add(parent, cbar.widget);
+}
+
 
 static void
 load_form_element(const xmlNode *cur_node, form_element_t *parent)
@@ -583,6 +626,10 @@ load_form_element(const xmlNode *cur_node, form_element_t *parent)
         load_table(cur_node, parent);
     }
 
+    if (is_oftype(cur_node, "CommandBar")) {
+        load_command_bar(cur_node, parent);
+    }
+
 }
 
 static void
@@ -592,7 +639,6 @@ load_form_elements(const xmlNode *list, form_element_t *parent)
     for (cur_node = list; cur_node; cur_node = cur_node->next)
         load_form_element(cur_node, parent);
 }
-
 
 static form_element_t *
 read_83_form(const char *path)
@@ -625,6 +671,28 @@ read_83_form(const char *path)
             : gtk_vbox_new(false, 2)
     ;
     form->box = true;
+
+    {
+        const xmlNode *pre = find_by_name(root_element->children, "Elements");
+        pre = find_by_path(pre, "PredefinedContainedItems");
+
+        if (pre->children) {
+
+            form_element_t vbox, pre_box;
+            vbox.widget = gtk_vbox_new(false, 0);
+            vbox.box = true;
+
+            pre_box.widget = gtk_vbox_new(false, 0);
+            pre_box.box = true;
+
+            load_form_elements(pre->children, &pre_box);
+
+            gtk_box_pack_start(GTK_BOX(vbox.widget), pre_box.widget, false, false, 0);
+            gtk_box_pack_start(GTK_BOX(vbox.widget), form->widget, false, false, 0);
+
+            form->widget = vbox.widget;
+        }
+    }
 
     load_form_elements(el->children, form);
 
