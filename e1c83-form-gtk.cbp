@@ -31,6 +31,8 @@
 		<Compiler>
 			<Add option="-Wall" />
 			<Add option="-mms-bitfields" />
+			<Add option="`pkg-config --cflags gtk+-2.0`" />
+			<Add option="`pkg-config --cflags libxml-2.0`" />
 			<Add directory="C:/home/gtkmm/include" />
 			<Add directory="C:/home/gtkmm/include/gtk-2.0" />
 			<Add directory="C:/home/gtkmm/include/cairo" />
@@ -44,10 +46,8 @@
 			<Add directory="C:/home/gtkmm/include/libxml2" />
 		</Compiler>
 		<Linker>
-			<Add library="gtk-win32-2.0" />
-			<Add library="gobject-2.0" />
-			<Add library="glib-2.0" />
-			<Add library="xml2" />
+			<Add option="`pkg-config --libs gtk+-2.0`" />
+			<Add option="`pkg-config --libs libxml-2.0`" />
 			<Add directory="C:/home/gtkmm/lib" />
 		</Linker>
 		<Unit filename="main.c">
